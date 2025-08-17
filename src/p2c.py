@@ -20,6 +20,6 @@ CLI_thread.start()
 
 while True:
     item = q.get()
-    p2c_logger.debug(f"Un objet ! {item}")
+    print(f"Un objet ! {item} of {type(item)=}")
     if isinstance(item, CmdExit):
         print("exit !!!!!!!!!!!")
