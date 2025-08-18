@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 import argparse
 import threading
 import logging
-from enum import Enum, auto
+from enum import StrEnum, auto
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ class CmdProject(Cmd):
     def _cmd_name(self):
         return "project"
 
-    class SubCmdProject(Enum):
+    class SubCmdProject(StrEnum):
         CREATE      = "create"
         OPEN        = "open"
         SAVE        = "save"
@@ -89,6 +89,7 @@ class CmdProject(Cmd):
         CLOSE       = "close"
         SETACTIVE   = "setactive"
         UNSETACTIVE = "unsetactive"
+        UNKNOWN     = auto()
 
     def _get_argparser(self):
         parser, subparsers = self._get_default_argparser()
@@ -110,8 +111,17 @@ class CmdProject(Cmd):
         return(parser)
 
     def _post_parsing(self):
-        print(f"AAAAAAAAAAAAAAAAAA {self.parsed_args[Cmd.subparser_name]}")
-        # self.subcmd = self.parsed_args.
+        logger.debug(f"Start post parsing for command {self}")
+
+        self.subcmd = self.SubCmdProject(self.parsed_args[Cmd.subparser_name])
+
+        if self.subcmd == self.SubCmdProject.UNKNOWN:
+            logger.warning("The subcmd parsed is unknown")
+        else:
+            try:
+                del self.parsed_args[Cmd.subparser_name]
+            except KeyError:
+                logger.error("Tried to remove the subcmd from the dict but can't")
 
 class CmdNode(Cmd):
     def __init__(self, args):
@@ -166,6 +176,6 @@ class P2CShell(cmd.Cmd):
     #     return cmd
 
     def postcmd(self, stop, line):
-        logger.info(f"postcmd for the line {line=} is about to be run")
+        logger.debug(f"postcmd for the line {line=} is about to be run")
         if stop != None:
             self.queue.put(stop)
