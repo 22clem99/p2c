@@ -9,9 +9,13 @@ logger = logging.getLogger(__name__)
 
 
 class P2CArgparse(argparse.ArgumentParser):
+    # def __init__(self, prog = None, usage = None, description = None, epilog = None, parents = ..., formatter_class = ..., prefix_chars = "-", fromfile_prefix_chars = None, argument_default = None, conflict_handler = "error", add_help = True, allow_abbrev = True, exit_on_error = True):
+    #     super().__init__(prog, usage, description, epilog, parents, formatter_class, prefix_chars, fromfile_prefix_chars, argument_default, conflict_handler, add_help, allow_abbrev, exit_on_error)
+    #     self.error_triggered = False
+
     def error(self, message):
         self.print_help(sys.stderr)
-        # self.exit(2, '%s: error: %s\n' % (self.prog, message))
+        self.error_triggered = True
 
 class Cmd(ABC):
     subparser_name = 'subparser_name'
@@ -44,6 +48,9 @@ class Cmd(ABC):
             logger.info(f"Arg(s) \'{' '.join(self.unknown_args)}\' does not exist")
             parser.print_help()
 
+        if parser.error_triggered == True:
+            return
+
         self._post_parsing()
 
     @abstractmethod
@@ -52,6 +59,8 @@ class Cmd(ABC):
 
     def _get_default_argparser(self):
         parser = P2CArgparse(prog=self._cmd_name(), exit_on_error=False, add_help=False)
+
+        parser.error_triggered = False
 
         subparsers = parser.add_subparsers(help='subcommand help', required=True, dest=self.subparser_name)
 
@@ -67,7 +76,7 @@ class CmdExit(Cmd):
         return "exit"
 
     def _get_argparser(self):
-        parser = self._get_default_argparser()
+        parser, subparser = self._get_default_argparser()
         parser.description = "Quit P2C"
         return(parser)
 
@@ -122,6 +131,8 @@ class CmdProject(Cmd):
                 del self.parsed_args[Cmd.subparser_name]
             except KeyError:
                 logger.error("Tried to remove the subcmd from the dict but can't")
+
+        self.project_name = self.parsed_args["name"]
 
 class CmdNode(Cmd):
     def __init__(self, args):

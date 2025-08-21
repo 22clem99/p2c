@@ -1,6 +1,7 @@
 from statemachine import State
 from statemachine import StateMachine
-from src.cli import Cmd, CmdProject
+from cli import Cmd, CmdProject
+
 
 class FSMProjectManager(StateMachine):
     s_idle         = State(initial=True)
@@ -29,17 +30,17 @@ class FSMProjectManager(StateMachine):
 
     t_active = s_active.to.itself()
 
-    t_set_active   = s_active.to(s_edited)
+    t_set_active   = s_active.to(s_edited, cond="is_setactive_cmd")
 
     t_edited = s_edited.to.itself()
 
-    t_save      = s_edited.to(s_save)
+    t_save      = s_edited.to(s_save, cond="is_save_cmd")
     t_save_done = s_save.to(s_active)
 
-    t_close      = s_inactive.to(s_close)
+    t_close      = s_inactive.to(s_close, cond="is_close_cmd")
     t_close_done = s_close.to(s_idle)
 
-    t_delete      = s_inactive.to(s_delete)
+    t_delete      = s_inactive.to(s_delete, cond="is_delete_cmd")
     t_delete_done = s_delete.to(s_idle)
 
     async def is_create_cmd(self, cmd: CmdProject):
@@ -62,4 +63,33 @@ class FSMProjectManager(StateMachine):
 
     async def is_unsetactive_cmd(self, cmd: CmdProject):
         return cmd.subcmd == CmdProject.SubCmdProject.UNSETACTIVE
+
+    def do_create_state(self):
+        pass
+
+    def do_create_state(self):
+        pass
+
+    def do_create_state(self):
+        pass
+
+    def do_create_state(self):
+        pass
+
+    def do_create_state(self):
+        pass
+
+    def do_create_state(self):
+        pass
+
+    def do_create_state(self):
+        pass
+    def do_create_state(self):
+        pass
+
+    def do_create_state(self):
+        pass
+
+    def do_create_state(self):
+        pass
 
