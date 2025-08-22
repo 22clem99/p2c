@@ -84,6 +84,7 @@ class FSMProjectManager(StateMachine):
 
     def do_create_state(self):
         pass
+
     def do_create_state(self):
         pass
 

@@ -14,13 +14,14 @@ p2c_logger = logging.getLogger(__name__)
 This queue is used to send CMD from generator thread of CMD (CLI and GUI)
 to the consumer thread (CMD executor)
 '''
-q = queue.Queue()
+q_cli_to_exec = queue.Queue()
+q_exec_to_cli = queue.Queue()
 
 
 '''
 Create the P2C shell as a thread
 '''
-p2c_shell = P2CShell(queue=q)
+p2c_shell = P2CShell(queue_input=q_exec_to_cli, queue_output=q_cli_to_exec)
 CLI_thread = threading.Thread(target=p2c_shell.cmdloop)
 CLI_thread.start()
 
@@ -28,7 +29,7 @@ CLI_thread.start()
 '''
 Create the command executor as a Thread
 '''
-p2c_executor = P2CCmdExecutor(queue=q)
+p2c_executor = P2CCmdExecutor(queue_input=q_cli_to_exec, queue_output=q_exec_to_cli)
 exec_thread = threading.Thread(target=p2c_executor.cmd_executor)
 exec_thread.start()
 

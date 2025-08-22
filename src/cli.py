@@ -4,15 +4,12 @@ import argparse
 import threading
 import logging
 from enum import StrEnum, auto
+import shlex
 
 logger = logging.getLogger(__name__)
 
 
 class P2CArgparse(argparse.ArgumentParser):
-    # def __init__(self, prog = None, usage = None, description = None, epilog = None, parents = ..., formatter_class = ..., prefix_chars = "-", fromfile_prefix_chars = None, argument_default = None, conflict_handler = "error", add_help = True, allow_abbrev = True, exit_on_error = True):
-    #     super().__init__(prog, usage, description, epilog, parents, formatter_class, prefix_chars, fromfile_prefix_chars, argument_default, conflict_handler, add_help, allow_abbrev, exit_on_error)
-    #     self.error_triggered = False
-
     def error(self, message):
         self.print_help(sys.stderr)
         self.error_triggered = True
@@ -23,6 +20,7 @@ class Cmd(ABC):
     def __init__(self, args):
         logger.debug(f"Command '{self}' is about to be run")
         super().__init__()
+        self.skip_cmd = False
         self._parse_param(args)
 
     @abstractmethod
@@ -39,7 +37,13 @@ class Cmd(ABC):
     def _parse_param(self, args):
         parser = self._get_argparser()
 
-        parsed_args, unknown_args = parser.parse_known_args(args.split())
+        try:
+            parsed_args, unknown_args = parser.parse_known_args(shlex.split(args))
+        except argparse.ArgumentError:
+            parser.error_triggered = True
+            self.skip_cmd = True
+            logger.debug(f"Unable to parse command, do nothing of this cmd")
+            return
 
         self.parsed_args = vars(parsed_args)
         self.unknown_args = unknown_args
@@ -47,8 +51,10 @@ class Cmd(ABC):
         if self.unknown_args != []:
             logger.info(f"Arg(s) \'{' '.join(self.unknown_args)}\' does not exist")
             parser.print_help()
+            self.skip_cmd = True
 
         if parser.error_triggered == True:
+            self.skip_cmd = True
             return
 
         self._post_parsing()
@@ -98,6 +104,7 @@ class CmdProject(Cmd):
         CLOSE       = "close"
         SETACTIVE   = "setactive"
         UNSETACTIVE = "unsetactive"
+        LIST_       = "list"
         UNKNOWN     = auto()
 
     def _get_argparser(self):
@@ -106,33 +113,39 @@ class CmdProject(Cmd):
         parser_create      = subparsers.add_parser('create', help='Create a P2C project')
         parser_create.add_argument('name')
         parser_open        = subparsers.add_parser('open', help='Open a P2C project')
-        parser_open.add_argument('name')
+        parser_open.add_argument('uid')
         parser_save        = subparsers.add_parser('save', help='Save a P2C project')
-        parser_save.add_argument('name')
+        parser_save.add_argument('uid')
         parser_delete      = subparsers.add_parser('delete', help='Delete a P2C project')
-        parser_delete.add_argument('name')
+        parser_delete.add_argument('uid')
         parser_close       = subparsers.add_parser('close', help='Close a P2C project')
-        parser_close.add_argument('name')
+        parser_close.add_argument('uid')
         parser_setactive   = subparsers.add_parser('setactive', help='Set the P2C project as current')
-        parser_setactive.add_argument('name')
+        parser_setactive.add_argument('uid')
         parser_unsetactive = subparsers.add_parser('unsetactive', help='Unset the P2C project as current')
-        parser_unsetactive.add_argument('name')
+        parser_unsetactive.add_argument('uid')
+        parser_list        = subparsers.add_parser('list', help='List open P2C project in the current session')
         return(parser)
 
     def _post_parsing(self):
         logger.debug(f"Start post parsing for command {self}")
+        if self.skip_cmd == False:
+            self.subcmd = self.SubCmdProject(self.parsed_args[Cmd.subparser_name])
 
-        self.subcmd = self.SubCmdProject(self.parsed_args[Cmd.subparser_name])
+            if self.subcmd == self.SubCmdProject.UNKNOWN:
+                logger.warning("The subcmd parsed is unknown")
+            else:
+                try:
+                    del self.parsed_args[Cmd.subparser_name]
+                except KeyError:
+                    logger.error("Tried to remove the subcmd from the dict but can't")
 
-        if self.subcmd == self.SubCmdProject.UNKNOWN:
-            logger.warning("The subcmd parsed is unknown")
-        else:
             try:
-                del self.parsed_args[Cmd.subparser_name]
+                self.project_name = self.parsed_args["name"]
             except KeyError:
-                logger.error("Tried to remove the subcmd from the dict but can't")
-
-        self.project_name = self.parsed_args["name"]
+                pass
+        else:
+            logger.debug("Skip post parsing")
 
 class CmdNode(Cmd):
     def __init__(self, args):
@@ -160,14 +173,36 @@ class CmdNode(Cmd):
 
 #         return(parser)
 
+class CLIEvent:
+    def __init__(self):
+        pass
+
+class CLIEventAskSave(CLIEvent):
+    def __init__(self):
+        pass
+
+class CLIEventExit(CLIEvent):
+    def __init__(self):
+        super().__init__()
+
+class CLIEventCmdSuccessful(CLIEvent):
+    def __init__(self, message):
+        super().__init__()
+        self.message = message
+
+class CLIEventCmdFailed(CLIEvent):
+    def __init__(self):
+        super().__init__()
+
 class P2CShell(cmd.Cmd):
     intro = 'Welcome to the P2C shell.   Type help or ? to list commands.\n'
     prompt = 'p2c$ '
     file = None
 
-    def __init__(self, completekey = "tab", stdin = None, stdout = None, queue = None):
+    def __init__(self, completekey = "tab", stdin = None, stdout = None, queue_output = None, queue_input = None):
         super().__init__(completekey, stdin, stdout)
-        self.queue = queue
+        self.queue_output = queue_output
+        self.queue_input  = queue_input
 
     def do_exit(self, arg):
         'Command to exit P2C cli'
@@ -189,4 +224,18 @@ class P2CShell(cmd.Cmd):
     def postcmd(self, stop, line):
         logger.debug(f"postcmd for the line {line=} is about to be run")
         if stop != None:
-            self.queue.put(stop)
+            if stop.skip_cmd == False:
+                # Send the command to the exexutor thread
+                self.queue_output.put(stop)
+
+                # Wait for a return event
+                event = self.queue_input.get()
+
+                if isinstance(event, CLIEventExit):
+                    logger.info(f"A exit has been received by the CLI thread")
+                    return True
+                elif isinstance(event, CLIEventCmdSuccessful):
+                    logger.debug(f"Return to CLI with a successful CMD")
+                    print(event.message)
+        else:
+            logger.debug("The command can't be parsed or is skipped")
