@@ -3,6 +3,10 @@ from cli import CLIEventExit, CLIEventCmdSuccessful
 from fsm.FSMProjectManager import *
 from data_modele.project import P2CProject
 
+from prettytable import PrettyTable
+
+from statemachine import exceptions
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -22,40 +26,52 @@ class P2CCmdExecutor:
         def exec_project_cmd(self, cmd: CmdProject):
             output = ""
 
-            # The list command is not managed as other subcmd
-            # this function just display the list of project open
-            # and doesn't interact with project or FSM's project
             if cmd.subcmd == CmdProject.SubCmdProject.LIST_:
                 output = self.__get_project_list_as_str()
-            # The create command is not managed as other subcmd
-            # this function will create a new project object with is own
-            # FSM
             elif cmd.subcmd == CmdProject.SubCmdProject.CREATE:
-                project = P2CProject(name=cmd.project_name)
-                fsm = FSMProjectManager()
-                self.projects[project.uid] = (project, fsm)
+                project = P2CProject(name=cmd.parsed_args["name"])
+                self.projects[project.uid] = project
                 output = f"New project created with the UID {project.uid:8} created"
-            else:
-                logger.debug(f"Project '{cmd.project_name}' exit")
 
+                # Send event to the FSM
+                self.projects[project.uid].fsm.send_cmd_event("t_create", cmd)
+            else:
+                project = self.projects[cmd.parsed_args["uid"]]
+
+                if cmd.subcmd == CmdProject.SubCmdProject.OPEN:
+                    event = "t_open"
+                elif cmd.subcmd == CmdProject.SubCmdProject.SAVE:
+                    event = "t_save"
+                elif cmd.subcmd == CmdProject.SubCmdProject.DELETE:
+                    event = "t_delete"
+                elif cmd.subcmd == CmdProject.SubCmdProject.CLOSE:
+                    event = "t_close"
+                elif cmd.subcmd == CmdProject.SubCmdProject.SETACTIVE:
+                    event = "t_set_active"
+                elif cmd.subcmd == CmdProject.SubCmdProject.UNSETACTIVE:
+                    event = "t_set_unactive"
+                else:
+                    logger.fatal("Subcmd unknow")
+                    exit(2)
+                # Send to the FSM the CMD
+                try:
+                    self.projects[project.uid].fsm.send_cmd_event(event, cmd)
+                except exceptions.TransitionNotAllowed:
+                    output = f"Can't run the command {cmd.subcmd} as the project is in the state {project.fsm.current_state}"
             return output
 
-        # def __is_project_exist(self, uid):
-        #     for project in self.projects:
-        #         if project.uid == name:
-        #             return True
-        #     return False
-
         def __get_project_list_as_str(self):
-            name_str_col = "Name"
-            uid_str_col  = "UID"
 
-            list_of_projects =f"|{name_str_col:15}|{uid_str_col:9}|"
-            list_of_projects =f"{len(list_of_projects)*"-"}\n{list_of_projects}\n{len(list_of_projects)*"-"}\n"
+            table = PrettyTable()
+            table.field_names = ["Name", "UID", "Active"]
+            table.align = 'l'
+            table.align["Acvtive"] = 'c'
+            table.max_width = 15
 
             for key, project in self.projects.items():
-                list_of_projects += f"|{project.name:14} |{project.uid:8} |\n"
-            return list_of_projects
+                table.add_row([project.name, project.uid, f"{"Yes" if project.fsm.is_active() else ""}"])
+
+            return table
 
     class CmdNodeExecutor:
         pass

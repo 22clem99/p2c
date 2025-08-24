@@ -43,6 +43,7 @@ class Cmd(ABC):
             parser.error_triggered = True
             self.skip_cmd = True
             logger.debug(f"Unable to parse command, do nothing of this cmd")
+            parser.print_help()
             return
 
         self.parsed_args = vars(parsed_args)
@@ -139,11 +140,6 @@ class CmdProject(Cmd):
                     del self.parsed_args[Cmd.subparser_name]
                 except KeyError:
                     logger.error("Tried to remove the subcmd from the dict but can't")
-
-            try:
-                self.project_name = self.parsed_args["name"]
-            except KeyError:
-                pass
         else:
             logger.debug("Skip post parsing")
 
@@ -236,6 +232,7 @@ class P2CShell(cmd.Cmd):
                     return True
                 elif isinstance(event, CLIEventCmdSuccessful):
                     logger.debug(f"Return to CLI with a successful CMD")
-                    print(event.message)
+                    if event.message != "":
+                        print(event.message)
         else:
             logger.debug("The command can't be parsed or is skipped")
